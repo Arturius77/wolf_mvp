@@ -1,0 +1,6 @@
+pandas
+aiohttp
+requests
+xlsxwriter
+finnhub-python
+python-telegram-bot==20.3
