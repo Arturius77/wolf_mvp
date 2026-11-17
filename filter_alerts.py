@@ -101,6 +101,8 @@ def save_excel(df):
 
 
 def send_to_telegram(file_path):
+    if not TOKEN or not CHAT_ID:
+        raise RuntimeError("Set TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID environment variables")
     try:
         with open(file_path, "rb") as f:
             requests.post(
