@@ -1,4 +1,4 @@
-name: Security Gate — secret scan
+name: Security Gate — secrets and credential files
 on:
   push:
     branches: [main]
@@ -10,18 +10,63 @@ permissions:
   contents: read
 jobs:
   secrets:
-    name: gitleaks
+    name: Security Gate
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - name: Checkout full history
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           fetch-depth: 0
           persist-credentials: false
-      - name: Detect exposed secrets
+      - name: Check tracked files and current code for credentials
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import re
+          import subprocess
+          from pathlib import Path
+
+          paths = [p.decode("utf-8", "replace") for p in subprocess.check_output(["git", "ls-files", "-z"]).split(b"\0") if p]
+          problems = []
+          rules = [
+              ("Telegram bot token", re.compile(rb"\b[0-9]{7,11}:AA[A-Za-z0-9_-]{28,}\b")),
+              ("GitHub access token", re.compile(rb"\bgh[pousr]_[A-Za-z0-9]{30,}\b")),
+              ("Private key block", re.compile(rb"-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----")),
+              ("Hard-coded credential assignment", re.compile(rb"(?i)\b(?:api[_-]?key|token|password|secret)\s*=\s*['\"][A-Za-z0-9_/:+=.-]{20,}['\"]")),
+          ]
+          for path in paths:
+              name = path.split("/")[-1].lower()
+              if name.endswith((".key", ".pem", ".p12", ".pfx", ".session", ".session-journal")):
+                  problems.append((path, "credential-like file is tracked"))
+              if name.startswith(".env") and name not in (".env.example", ".env.sample", ".env.template"):
+                  problems.append((path, "environment file is tracked"))
+              try:
+                  data = Path(path).read_bytes()
+              except (OSError, ValueError):
+                  continue
+              if b"\0" in data or len(data) > 2_000_000:
+                  continue
+              for label, pattern in rules:
+                  if pattern.search(data):
+                      problems.append((path, label))
+          for path, reason in sorted(set(problems)):
+              print(f"::error file={path}::{reason}; secret value suppressed")
+          if problems:
+              raise SystemExit(1)
+          print("No obvious credentials in tracked snapshot.")
+          PY
+      - name: Check new commits with Gitleaks
         uses: gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e # v3
         env:
-          GITHUB_TOKEN: ${{ github.token }}
+          GITHUB_TOKEN: \${{ github.token }}
           GITLEAKS_ENABLE_COMMENTS: 'false'
           GITLEAKS_ENABLE_UPLOAD_ARTIFACT: 'false'
+      - name: Audit complete Git history weekly or on demand
+        if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+        shell: bash
+        run: |
+          set -euo pipefail
+          BIN="$(find /tmp -maxdepth 4 -type f -name gitleaks -perm -u+x -print -quit)"
+          test -n "$BIN" || { echo "::error::Gitleaks executable missing"; exit 1; }
+          "$BIN" git --redact --exit-code 1 --log-opts='--all' .
