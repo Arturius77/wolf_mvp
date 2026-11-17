@@ -15,8 +15,8 @@ MIN_CHANGE_PCT = float(os.getenv("MIN_CHANGE_PCT", 6))
 TOP_N = int(os.getenv("TOP_N", 20))
 
 # === Telegram ===
-TOKEN = "8306319161:AAGuibEhO8vjpRHlY_tZyG3fGUcmYVLO6qk"
-CHAT_ID = "182605982"
+TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 
 
 def safe_float(v):
