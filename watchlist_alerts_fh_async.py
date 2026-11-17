@@ -8,13 +8,10 @@ from pathlib import Path
 BASE_DIR = Path(__file__).resolve().parent
 WATCHLIST = BASE_DIR / "watchlist.csv"
 ALERTS = BASE_DIR / "alerts.csv"
-KEY_FILE = BASE_DIR / "finnhub.key"
-
-# === Load API Key ===
-if not KEY_FILE.exists():
-    raise FileNotFoundError("Missing finnhub.key! Create it and paste your API token inside.")
-with open(KEY_FILE) as f:
-    API_KEY = f.read().strip()
+# === Load API key from environment ===
+API_KEY = os.getenv("FINNHUB_API_KEY")
+if not API_KEY:
+    raise RuntimeError("Set FINNHUB_API_KEY environment variable")
 
 # === Settings ===
 MAX_CONCURRENT = 20  # parallel requests
